@@ -15,4 +15,7 @@ return [
 
     'stub_path' => base_path('vendor/bastinald/laravel-automatic-migrations/resources/stubs'),
 
+    'model_paths' => [
+        'App\\Models' => app_path('Models'),
+    ],
 ];

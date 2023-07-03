@@ -4,6 +4,7 @@ namespace Bastinald\LaravelAutomaticMigrations\Commands;
 
 use Illuminate\Console\Command;
 use Doctrine\DBAL\Schema\Comparator;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Database\Schema\Blueprint;
@@ -12,7 +13,7 @@ use Symfony\Component\Finder\Finder;
 
 class MigrateAutoCommand extends Command
 {
-    protected $signature = 'migrate:auto {--f|--fresh} {--s|--seed} {--force}';
+    protected $signature = 'migrate:auto {--f|--fresh} {--s|--seed} {--force} {--pretend}';
 
     public function handle()
     {
@@ -22,9 +23,9 @@ class MigrateAutoCommand extends Command
             return;
         }
 
-        $this->handleTraditionalMigrations();
+        //$this->handleTraditionalMigrations();
         $this->handleAutomaticMigrations();
-        $this->seed();
+        //$this->seed();
 
         $this->info('Automatic migration completed successfully.');
     }
@@ -46,26 +47,27 @@ class MigrateAutoCommand extends Command
 
     private function handleAutomaticMigrations()
     {
-        $path = app_path('Models');
-        $namespace = app()->getNamespace();
         $models = collect();
 
-        if (!is_dir($path)) {
-            return;
-        }
+        $modelPaths = config('laravel-automatic-migrations.model_paths');
+        foreach ($modelPaths as $namespace => $path) {
+            if (!is_dir($path)) {
+                continue;
+            }
 
-        foreach ((new Finder)->in($path) as $model) {
-            $model = $namespace . str_replace(
-                    ['/', '.php'],
-                    ['\\', ''],
-                    Str::after($model->getRealPath(), realpath(app_path()) . DIRECTORY_SEPARATOR)
-                );
+            foreach ((new Finder)->in($path) as $model) {
+                $model = $namespace . str_replace(
+                        ['/', '.php'],
+                        ['\\', ''],
+                        Str::after($model->getRealPath(), realpath($path))
+                    );
 
-            if (method_exists($model, 'migration')) {
-                $models->push([
-                    'object' => $object = app($model),
-                    'order' => $object->migrationOrder ?? 0,
-                ]);
+                if (method_exists($model, 'migration')) {
+                    $models->push([
+                        'object' => $object = app($model),
+                        'order' => $object->migrationOrder ?? 0,
+                    ]);
+                }
             }
         }
 
@@ -78,12 +80,14 @@ class MigrateAutoCommand extends Command
     {
         $modelTable = $model->getTable();
         $tempTable = 'table_' . $modelTable;
+        $pretend = $this->option('pretend');
 
         Schema::dropIfExists($tempTable);
         Schema::create($tempTable, function (Blueprint $table) use ($model) {
             $model->migration($table);
         });
 
+        // alter existing table
         if (Schema::hasTable($modelTable)) {
             $schemaManager = $model->getConnection()->getDoctrineSchemaManager();
             $modelTableDetails = $schemaManager->listTableDetails($modelTable);
@@ -91,17 +95,45 @@ class MigrateAutoCommand extends Command
             $tableDiff = (new Comparator)->diffTable($modelTableDetails, $tempTableDetails);
 
             if ($tableDiff) {
-                $schemaManager->alterTable($tableDiff);
+                $queries = $schemaManager->getDatabasePlatform()->getAlterTableSQL($tableDiff);
+
+                if ($pretend) {
+                    foreach ($queries as $query) {
+                        $this->line("<info>".get_class($model).":</info> {$query}");
+                    }
+
+                    return;
+                }
+
+                //$schemaManager->alterTable($tableDiff);
 
                 $this->line('<info>Table updated:</info> ' . $modelTable);
             }
 
             Schema::drop($tempTable);
-        } else {
-            Schema::rename($tempTable, $modelTable);
 
-            $this->line('<info>Table created:</info> ' . $modelTable);
+            return;
         }
+
+        // create new table
+        $queries = Schema::getConnection()->pretend(function () use ($modelTable, $model) {
+            Schema::create($modelTable, static function (Blueprint $table) use ($model) {
+                $model->migration($table);
+            });
+        });
+
+        if ($pretend) {
+            foreach ($queries as $query) {
+                $this->line("<info>".get_class($model).":</info> {$query['query']}");
+            }
+
+            return;
+        }
+
+        //Schema::rename($tempTable, $modelTable);
+        Schema::dropIfExists($tempTable);
+
+        $this->line('<info>Table created:</info> ' . $modelTable);
     }
 
     private function seed()
