@@ -19,7 +19,7 @@ This package works fine alongside traditional Laravel migration files, for the c
 Require the package via composer:
 
 ```console
-composer require bastinald/laravel-automatic-migrations
+composer require tankonyako/laravel-automatic-migrations-updated
 ```
 
 ## Usage
