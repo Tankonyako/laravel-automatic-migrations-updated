@@ -105,7 +105,7 @@ class MigrateAutoCommand extends Command
                     return;
                 }
 
-                //$schemaManager->alterTable($tableDiff);
+                $schemaManager->alterTable($tableDiff);
 
                 $this->line('<info>Table updated:</info> ' . $modelTable);
             }
