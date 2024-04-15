@@ -130,7 +130,7 @@ class MigrateAutoCommand extends Command
             return;
         }
 
-        //Schema::rename($tempTable, $modelTable);
+        Schema::rename($tempTable, $modelTable);
         Schema::dropIfExists($tempTable);
 
         $this->line('<info>Table created:</info> ' . $modelTable);
