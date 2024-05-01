@@ -23,9 +23,9 @@ class MigrateAutoCommand extends Command
             return;
         }
 
-        //$this->handleTraditionalMigrations();
+        $this->handleTraditionalMigrations();
         $this->handleAutomaticMigrations();
-        //$this->seed();
+        $this->seed();
 
         $this->info('Automatic migration completed successfully.');
     }
