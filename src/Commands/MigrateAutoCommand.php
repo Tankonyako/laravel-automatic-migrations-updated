@@ -79,7 +79,17 @@ class MigrateAutoCommand extends Command
     private function migrate($model)
     {
         $modelTable = $model->getTable();
-        $tempTable = 'table_' . $modelTable;
+
+        $tempTable = 'temp_' . $modelTable;
+		if (Schema::getConnection()->getDriverName() === 'pgsql') {
+			// create schema temp
+			$schemaName = 'temp';
+			// fix table name
+            $tempTable = $schemaName . '.' . $modelTable;
+			// raw sql run
+			Schema::getConnection()->statement("CREATE SCHEMA IF NOT EXISTS {$schemaName};");
+		}
+
         $pretend = $this->option('pretend');
 
         Schema::dropIfExists($tempTable);
@@ -107,7 +117,7 @@ class MigrateAutoCommand extends Command
 
                 $schemaManager->alterTable($tableDiff);
 
-                $this->line('<info>Table updated:</info> ' . $modelTable);
+                $this->line('<info>Table updated:</info> ' . $modelTable . ' : ' . join("\n", $queries));
             }
 
             Schema::drop($tempTable);
@@ -130,7 +140,15 @@ class MigrateAutoCommand extends Command
             return;
         }
 
-        Schema::rename($tempTable, $modelTable);
+		// raw sql set schema to public
+        if (Schema::getConnection()->getDriverName() === 'pgsql') {
+			Schema::getConnection()->statement("ALTER TABLE {$tempTable} SET SCHEMA public;");
+	    }
+		else
+		{
+            Schema::rename($tempTable, $modelTable);
+		}
+
         Schema::dropIfExists($tempTable);
 
         $this->line('<info>Table created:</info> ' . $modelTable);
